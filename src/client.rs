@@ -2,6 +2,8 @@ use matrix_sdk::LoopCtrl;
 use pyo3::prelude::*;
 use pythonize::pythonize;
 
+use crate::sync_settings::SyncSettings;
+
 #[pyclass]
 pub struct Client(pub matrix_sdk::Client);
 
@@ -15,6 +17,12 @@ impl Client {
     #[getter]
     pub fn device_id(&self) -> Option<&str> {
         self.0.device_id().map(|u| u.as_str())
+    }
+
+    pub fn sync_token<'a>(&'a self, py: Python<'a>) -> PyResult<&PyAny> {
+        let client = self.0.clone();
+
+        pyo3_asyncio::tokio::future_into_py(py, async move { Ok(client.sync_token().await) })
     }
 
     pub fn homeserver_ulr<'a>(&'a self, py: Python<'a>) -> PyResult<&PyAny> {
@@ -57,44 +65,78 @@ impl Client {
         })
     }
 
-    pub fn sync<'a>(&'a self, py: Python<'a>, callback: PyObject) -> PyResult<&PyAny> {
+    pub fn sync_once<'a>(
+        &'a self,
+        py: Python<'a>,
+        sync_settings: SyncSettings,
+    ) -> PyResult<&PyAny> {
         let client = self.0.clone();
 
         pyo3_asyncio::tokio::future_into_py(py, async move {
-            client
-                .sync_with_callback(Default::default(), {
-                    let callback = callback.clone();
-                    move |response| {
+            let response = client
+                .sync_once(sync_settings.into())
+                .await
+                .map_err(anyhow::Error::from)?;
+
+            Python::with_gil(|py| -> PyResult<_> { Ok(pythonize(py, &response)?) })
+        })
+    }
+
+    #[args(sync_settings = "SyncSettings::default()", callbac = "None")]
+    pub fn sync<'a>(
+        &'a self,
+        py: Python<'a>,
+        sync_settings: SyncSettings,
+        callback: Option<PyObject>,
+    ) -> PyResult<&PyAny> {
+        let client = self.0.clone();
+
+        if let Some(callback) = callback {
+            pyo3_asyncio::tokio::future_into_py(py, async move {
+                client
+                    .sync_with_callback(sync_settings.into(), {
                         let callback = callback.clone();
+                        move |response| {
+                            let callback = callback.clone();
 
-                        async move {
-                            let future = Python::with_gil(|py| -> PyResult<_> {
-                                let response = pythonize(py, &response)?;
+                            async move {
+                                let future = Python::with_gil(|py| -> PyResult<_> {
+                                    let response = pythonize(py, &response)?;
 
-                                let coroutine = callback.call(py, (response,), None)?;
-                                let coroutine = coroutine.as_ref(py);
+                                    let coroutine = callback.call(py, (response,), None)?;
+                                    let coroutine = coroutine.as_ref(py);
 
-                                let future = pyo3_asyncio::tokio::into_future(coroutine)?;
+                                    let future = pyo3_asyncio::tokio::into_future(coroutine)?;
 
-                                Ok(future)
-                            });
+                                    Ok(future)
+                                });
 
-                            // TODO log some of those errors or perhaps raise an exception.
-                            if let Ok(f) = future {
-                                if let Ok(_) = f.await {
-                                    LoopCtrl::Continue
+                                // TODO log some of those errors or perhaps raise an exception.
+                                if let Ok(f) = future {
+                                    if let Ok(_) = f.await {
+                                        LoopCtrl::Continue
+                                    } else {
+                                        LoopCtrl::Break
+                                    }
                                 } else {
                                     LoopCtrl::Break
                                 }
-                            } else {
-                                LoopCtrl::Break
                             }
                         }
-                    }
-                })
-                .await;
+                    })
+                    .await
+                    .expect("Sync stopped");
 
-            Ok(())
-        })
+                Ok(())
+            })
+        } else {
+            pyo3_asyncio::tokio::future_into_py(py, async move {
+                client
+                    .sync(sync_settings.into())
+                    .await
+                    .expect("Sync stopped");
+                Ok(())
+            })
+        }
     }
 }

@@ -10,15 +10,15 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1"
-pyo3 = { version = "0.16.6", features = ["extension-module", "anyhow"] }
-pyo3-asyncio = { version = "0.16", features = ["attributes", "tokio-runtime"] }
-pythonize = "0.16.0"
+pyo3 = { version = "0.17.2", features = ["extension-module", "anyhow"] }
+dict_derive = "0.4.0"
+pyo3-asyncio = { version = "0.17", features = ["attributes", "tokio-runtime"] }
+pythonize = "0.17.0"
 serde_json = "1"
-tokio = "1.21.0"
+tokio = "1.21.2"
 thiserror = "1"
 
 
 [dependencies.matrix-sdk]
-git = "https://github.com/matrix-org/matrix-rust-sdk/"
-rev = "831e802dd0e78722065bb6834503e7b26516bee7"
+version = "0.6.2"
 features = ["e2e-encryption", "sled"]
