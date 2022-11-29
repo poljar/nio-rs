@@ -17,8 +17,12 @@ pythonize = "0.17.0"
 serde_json = "1"
 tokio = "1.21.2"
 thiserror = "1"
+vodozemac = "0.3.0"
 
 
 [dependencies.matrix-sdk]
 version = "0.6.2"
 features = ["e2e-encryption", "sled"]
+
+[dependencies.matrix-sdk-crypto]
+version = "0.6.0"
